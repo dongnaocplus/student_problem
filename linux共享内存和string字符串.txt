@@ -1,0 +1,54 @@
+---VIP学员问题分享---
+昨天我们的VIP学员“梦回IT”遇到一个很有趣的问题，和大家分享一下：
+
+---源码---
+struct Student
+{
+	string name;
+	int age;
+};
+//创建共享内存的ID
+#define MEM_ID	1234
+//映射共享内存的大小，3个Student大小长
+#define MEM_SIZE sizeof(Student)*3
+
+//共享内存读取端
+int main(void)
+{
+	//打开共享内存
+	int shmid = shmget(MEM_ID, MEM_SIZE, IPC_CREAT | IPC_EXCL | 0666);
+	if (shmid == -1)
+		err_exit("shmget");
+	//映射共享内存，使用常量指针防止地址丢失
+	Student * const cpstu = (Student*)shmat(shmid, NULL, 0);
+	
+	if (cpstu == reinterpret_cast<void*>(-1))
+		err_exit("shmat");
+	//访问数据
+	Student *pstu = cpstu;
+	//error:一旦访问string必出现段错误。
+	printf("idx:%d,name:%s,age:%d\n",0, pstu[0].name.c_str(), pstu[0].age);
+        ......
+---end----
+
+问题描述：
+每次访问Student对象中的string成员就会导致段错误。
+
+问题分析：
+根本原因在于，string类型必须要使用默认的构造函数才能正确使用
+所以，当直接使用共享内存作为string时，就会出现错误！
+实际上，不只是共享内存，使用malloc分配的内存来作为string使用时，也会导致相同的错误
+只用使用new构建Student对象，或者直接在栈空间中定义Student对象，或者定义全局Student对象时，
+这几种情况下，都会调用默认的构造函数来构建string对象。
+
+解决方案：
+使用placement new(在指定的地址分配内存并构建对象）
+使用：Student *pstu = new(cpstu)(Student[3]);
+
+问题总结:
+在Linux服务器开发结合C++时，如果对C++不是很了解，会遇到很多莫名其妙的坑。
+对C++不是很熟悉的朋友，建议关注我们的初级课程《c/c++  从入门到精通》 
+https://ke.qq.com/course/267052#tuin=715c08ff
+
+对服务器开发感兴趣的朋友，可以关注我们的高级课程，其中覆盖Linux服务器开发
+https://ke.qq.com/course/244938#tuin=715c08ff
